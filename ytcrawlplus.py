@@ -9,6 +9,8 @@ import os
 import gc
 import threading
 
+import youtube_dl
+
 def _pickle_method(m):
     if m.im_self is None:
         return getattr, (m.im_class, m.im_func.func_name)
@@ -33,7 +35,7 @@ class YTCrawl:
         'searchvideo' : {}
     }
 
-    def __init__(self, dkey, odir='./data/', nthread=10, oformat='pickle', region='US', bquality='low'):
+    def __init__(self, dkey, odir='./data/', nthread=10, oformat='pickle', region='US', bquality='low', flushlog=False):
         self.odir = odir
         self.dkey = dkey
         self.nthread = nthread;
@@ -46,6 +48,7 @@ class YTCrawl:
 
         self.errfile = self.odir + '/' + 'log.error'
         self.donefile = self.odir + '/' + 'log.done'
+        self.flushlog = flushlog
 
     # crawl functions
     def crawl(self, t, kl):
@@ -152,10 +155,39 @@ class YTCrawl:
         "to download a single video content"
         d = self.odir + '/' + vId[-1] + '/' + vId[-2] + '/'
         self.mkdir(d)
-        cmd = r'youtube-dl ' + vId + r' -o "' + d + r'%(id)s.%(ext)s"'
-        os.system(cmd)
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'postprocessors': [{}],
+            'logger': (self.YtdlLogger(self.errfile, self.flushlog)),
+            'progress_hooks': [self.ytdl_hook],
+            'outtmpl': d + r'%(id)s.%(ext)s',
+        }
+        
+        ydl = youtube_dl.YoutubeDL(ydl_opts)
+        ydl.download([vId])
         return
 
+    class YtdlLogger(object):
+        def __init__(self, logfile, flush=False):
+            self.logfile = logfile
+            self.flush = flush
+            
+        def debug(self, msg):
+            pass
+        def warning(self, msg):
+            self.logfile.write('[warning] ' + msg + '\n')
+            if self.flush:
+                self.logfile.flush()
+        def error(self, msg):
+            self.logfile.write('[error] ' + msg + '\n')
+            if self.flush:
+                self.logfile.flush()
+
+    def ytdl_hook(self, m):
+        if d['status'] == 'finished':
+            vId = d['filename'].split('.')[-2][-11:]
+            self.logdone(vId)
+            
 
     # output functions
     def save_txt(self, Id, txt, dtype):

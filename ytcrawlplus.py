@@ -8,6 +8,7 @@ import time
 import os
 import gc
 import threading
+import glob
 
 import youtube_dl
 
@@ -19,7 +20,7 @@ def _pickle_method(m):
 
 copy_reg.pickle(types.MethodType, _pickle_method)
 
-class YTCrawl:
+class YTCrawl(object):
     dkey = ''
     nthread = 10
     odir = ''
@@ -263,3 +264,106 @@ class YTCrawl:
     def mkdir(self, d):
         if not os.path.exists(d):
             os.makedirs(d)
+
+
+class Utility(object):
+
+    nthread = 16
+    threadbatch = 50
+    
+    def __init__(self, nthread):
+        self.nthread = nthread
+    
+    def video2mp3(self, indir, outdir):
+        "recursively clone the input folder"
+        if not self.which('ffmpeg'):
+            raise 'Error: cannot find ffmpeg in PATH'
+
+        batch = self.nthread*self.threadbatch
+
+        arglist = []
+        N = 0
+        for rp, f in self.relwalkfile(indir):
+            if N < batch:
+                fn = '.'.join(f.split('.')[0:-1])
+                outfile = outdir+'/'+rp+'/'+fn+'.mp3'
+                if os.path.exists(outfile):
+                    continue
+                arglist.append((indir+'/'+rp+'/'+f, outfile))
+                N += 1
+            else:
+                self.nrmap(self.t_video2mp3, arglist)
+                arglist = []
+                N = 0
+        if arglist != None:
+            self.nrmap(self.t_video2mp3, arglist)
+                
+    def t_video2mp3(self, arg):
+        for infile, outfile in arg:
+            self.mkdir(os.path.dirname(outfile))
+            os.system('ffmpeg -loglevel panic -n -i ' + infile + ' -vn ' + outfile)
+
+
+    # support for parallel
+    def nrmap(self, func, kwl):
+        ## no return map
+        threads = []
+        nEach = len(kwl)/self.nthread
+        nt = self.nthread
+        if nEach == 0:
+            nt = len(kwl)
+        for i in range(0, nt-1):
+            threads.append(threading.Thread(target=func, args=(kwl[i*nEach : (i+1)*nEach], )))
+        threads.append(threading.Thread(target=func, args=(kwl[(nt-1)*nEach : ], )))
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+    
+    # utility functions
+    def getdir(self, p):
+        topdir = []
+        tmp = glob.glob(p + '/*')
+        for i in tmp:
+            if os.path.isdir(i):
+                topdir.append(i)
+                
+        ret = []
+        for d in topdir:
+            tmp = d.split(os.sep)
+            ret.append(filter(lambda x: x != '', tmp)[-1])
+        
+        return ret
+    
+    # helper functions
+    def mkdir(self, d):
+        if not os.path.exists(d):
+            os.makedirs(d)
+            
+    def which(self, program):
+        import os
+        def is_exe(fpath):
+            return os.path.isfile(fpath) and os.access(fpath, os.X_OK)
+
+        fpath, fname = os.path.split(program)
+        if fpath:
+            if is_exe(program):
+                return program
+        else:
+            for path in os.environ["PATH"].split(os.pathsep):
+                path = path.strip('"')
+                exe_file = os.path.join(path, program)
+                if is_exe(exe_file):
+                    return exe_file
+        return None
+
+    def relwalkfile(self, folder):
+        "return relative path and file name"
+        for root, dirs, files in os.walk(folder):
+            for f in files:
+                yield (os.path.relpath(root,folder), f)
+    
+    def printinput(self, i):
+        "for debug"
+        print i

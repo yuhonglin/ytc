@@ -28,7 +28,11 @@ class YTCrawl(object):
     oformat = ''
     bquality = 'low'
     maxsize = '100M'
-    
+
+    verbose = 1
+
+    reportbatchsize = 100
+
     txtres = {
         'video' : {},
         'channel' : {},
@@ -57,11 +61,12 @@ class YTCrawl(object):
         t: data type ('video', 'channel', 'search', 'binary')
         kl: key list (videoID, channelID, or search keywords)
         """
-
+        self.loginfo('nJobs input: ' + str(len(kl)))
         old = self.loginit()
+        self.loginfo('nJobs DONE: ' + str(len(old)))
         if old != None:
             kl = list(set(kl)-old) # remove old ones
-        
+        self.loginfo('nJobs TODO: ' + str(len(old)))
         if t == 'channel':
             self.nrmap(self.t_channel, kl)
             return
@@ -82,9 +87,10 @@ class YTCrawl(object):
         nt = self.nthread
         if nEach == 0:
             nt = len(kwl)
+
         for i in range(0, nt-1):
-            threads.append(threading.Thread(target=func, args=(kwl[i*nEach : (i+1)*nEach], )))
-        threads.append(threading.Thread(target=func, args=(kwl[i*nEach : ], )))
+            threads.append(threading.Thread(target=func, args=(kwl[i*nEach : (i+1)*nEach],i, )))
+        threads.append(threading.Thread(target=func, args=(kwl[(nt-1)*nEach : ],nt-1, )))
         for t in threads:
             t.start()
         for t in threads:
@@ -98,17 +104,26 @@ class YTCrawl(object):
         self.mdelay.release()      
         
     # thread functions, called by crawling functions
-    def t_searchVideo(self, kwl):
-        for kw in kwl:
+    def t_searchVideo(self, kwl, threadid):
+        for i, kw in enumerate(kwl):
+            if i % self.reportbatchsize == 0:
+                self.loginfo('[thread %02d] %0.2f' % (threadid, float(i)/len(kwl)*100))            
             self.s_searchVideo(kw)
 
-    def t_binary(self, kwl):
-        for kw in kwl:
+    def t_binary(self, kwl, threadid):
+        for i, kw in enumerate(kwl):
+            if i % self.reportbatchsize == 0:
+                self.loginfo('[thread %02d] %0.2f' % (threadid, float(i)/len(kwl)*100))
             self.s_binary(kw)
 
-    def t_video(self, kwl):
-        for kw in kwl:
-            self.s_video(kw)
+    def t_video(self, kwl, threadid):
+        for i, kw in enumerate(kwl):
+            if i % self.reportbatchsize == 0:
+                self.loginfo('[thread %02d] %0.2f' % (threadid, float(i)/len(kwl)*100))
+            try:
+                self.s_video(kw)
+            except Exception, e:
+                self.logerr(kw + ',' + str(e))
 
     def s_searchVideo(self, kw):
         "to donwload a single search result"
@@ -118,7 +133,6 @@ class YTCrawl(object):
                    '&maxResults=50' + \
                    '&regionCode=' + self.region + \
                    '&type=video' + \
-                   '&order=videoCount' + \
                    '&key=' + self.dkey).replace( ' ', '\%20')
         except Exception, e:
             print e, kw
@@ -263,6 +277,9 @@ class YTCrawl(object):
         if flush:
             self.donefileobj.flush()
 
+    def loginfo(self, s):
+        print s
+            
     # helper functions
     def mkdir(self, d):
         if not os.path.exists(d):

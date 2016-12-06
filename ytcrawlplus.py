@@ -106,6 +106,9 @@ class YTCrawl(object):
         for kw in kwl:
             self.s_binary(kw)
 
+    def t_video(self, kwl):
+        for kw in kwl:
+            self.s_video(kw)
 
     def s_searchVideo(self, kw):
         "to donwload a single search result"
@@ -138,8 +141,8 @@ class YTCrawl(object):
     def s_video(self, vId):
         "to donwload a single video meta data"
         txt = urllib2.urlopen( \
-            'https://www.googleapis.com/youtube/v3/videos?id=' + key + \
-            '&key=' + dkey + \
+            'https://www.googleapis.com/youtube/v3/videos?id=' + vId + \
+            '&key=' + self.dkey + \
             '&regionCode=' + self.region + \
             '&part=snippet,contentDetails,player,recordingDetails,statistics,status,topicDetails').read()
         self.save_txt(vId, txt, 'video')
